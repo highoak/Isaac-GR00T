@@ -1,32 +1,60 @@
 import runpod
-import time  
+import subprocess
+import os
+import json
 
 def handler(event):
     """
     This function processes incoming requests to your Serverless endpoint.
+    It executes the provided bash command and returns the output.
     
     Args:
         event (dict): Contains the input data and request metadata
         
     Returns:
-        Any: The result to be returned to the client
+        dict: Contains the command output, error (if any), and exit code
     """
     
     # Extract input data
     print(f"Worker Start")
-    input = event['input']
+    input_data = event['input']
     
-    prompt = input.get('prompt')  
-    seconds = input.get('seconds', 0)  
-
-    print(f"Received prompt: {prompt}")
-    print(f"Sleeping for {seconds} seconds...")
+    # Get the command to execute
+    command = input_data.get('command')
     
-    # You can replace this sleep call with your Python function to generate images, text, or run any machine learning workload
-    time.sleep(seconds)  
+    if not command:
+        return {
+            "error": "No command provided in the input",
+            "exit_code": 1
+        }
     
-    return prompt 
+    print(f"Executing command: {command}")
+    
+    try:
+        # Execute the command and capture output
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        stdout, stderr = process.communicate()
+        exit_code = process.returncode
+        
+        return {
+            "stdout": stdout,
+            "stderr": stderr,
+            "exit_code": exit_code
+        }
+    
+    except Exception as e:
+        return {
+            "error": str(e),
+            "exit_code": 1
+        }
 
 # Start the Serverless function when the script is run
 if __name__ == '__main__':
-    runpod.serverless.start({'handler': handler })
+    runpod.serverless.start({'handler': handler})

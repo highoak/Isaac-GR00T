@@ -20,6 +20,8 @@ RUN pip install gpustat wandb==0.19.0
 WORKDIR /workspace
 # Copy pyproject.toml for dependencies
 COPY pyproject.toml .
+# Copy the main package directory
+COPY gr00t /workspace/gr00t
 # Install dependencies from pyproject.toml
 RUN pip install -e .
 # There's a conflict in the native python, so we have to resolve it by
@@ -37,6 +39,8 @@ RUN pip install -e . --no-deps
 # need to install accelerate explicitly to avoid version conflicts
 RUN pip install accelerate>=0.26.0
 RUN pip install --no-cache-dir runpod
+# Install Jupyter Notebook
+RUN pip install jupyter
 COPY rp_handler.py /workspace/rp_handler.py
 
 CMD ["python","-u","/workspace/rp_handler.py"]
