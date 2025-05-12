@@ -33,7 +33,6 @@ RUN rm -rf /usr/local/lib/python3.10/dist-packages/cv2 || true
 RUN pip install opencv-python==4.8.0.74
 RUN pip install --force-reinstall torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 numpy==1.26.4
 COPY getting_started /workspace/getting_started
-COPY scripts /workspace/scripts
 COPY demo_data /workspace/demo_data
 RUN pip install -e . --no-deps
 # need to install accelerate explicitly to avoid version conflicts
@@ -42,5 +41,16 @@ RUN pip install --no-cache-dir runpod
 # Install Jupyter Notebook
 RUN pip install jupyter
 COPY rp_handler.py /workspace/rp_handler.py
+# Install Flask and Flask-SocketIO for Serial Proxy app
+RUN pip install flask flask-socketio eventlet
+
+RUN git clone https://github.com/huggingface/lerobot
+RUN cd lerobot && pip install -e .
+RUN huggingface-cli download --repo-type dataset youliangtan/so100_strawberry_grape --local-dir /root/datasets/so100_strawberry_grape
+RUN pip install feetech-servo-sdk
+# Expose the Serial Proxy port
+EXPOSE 5000
+COPY scripts /workspace/scripts
+COPY scripts/configs.py /workspace/lerobot/lerobot/common/robot_devices/robots/configs.py
 
 CMD ["python","-u","/workspace/rp_handler.py"]

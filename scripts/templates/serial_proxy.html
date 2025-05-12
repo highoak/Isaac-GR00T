@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serial Port Proxy</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        body {
+            padding: 20px;
+        }
+        #dataLog {
+            height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            background-color: #2d2d2d;
+            color: #eee;
+            padding: 10px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .form-check-label {
+            margin-right: 15px;
+        }
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            display: inline-block;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-connected {
+            background-color: #00ff00;
+        }
+        .status-disconnected {
+            background-color: #ff0000;
+        }
+        .hex-byte {
+            margin-right: 5px;
+        }
+        .alert {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+        .data-direction-rx {
+            color: #8aff8a;
+        }
+        .data-direction-tx {
+            color: #ff8a8a;
+        }
+        #serialApiInfoCard {
+            margin-bottom: 20px;
+        }
+        code {
+            background-color: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 4px;
+            color: #d63384;
+        }
+        .chrome-flag-steps {
+            display: none;
+        }
+        .chrome-flag-steps.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card" id="serialApiInfoCard">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Web Serial API Information</h5>
+            </div>
+            <div class="card-body">
+                <p>The Web Serial API requires specific conditions to work properly:</p>
+                <ol>
+                    <li><strong>Browser Support:</strong> Chrome 89+ or Edge</li>
+                    <li><strong>Secure Context:</strong> Must be accessed via HTTPS or localhost</li>
+                    <li><strong>Permissions:</strong> User must grant permission when prompted</li>
+                </ol>
+                
+                <p><strong>Using on non-localhost connections:</strong></p>
+                <p>If you're accessing this page through an IP address or non-secure domain, you need to enable a special Chrome flag:</p>
+                <button class="btn btn-sm btn-outline-secondary mb-2" onclick="toggleChromeSteps()">Show Chrome Flag Instructions</button>
+                
+                <div class="chrome-flag-steps">
+                    <ol>
+                        <li>Open a new Chrome tab and navigate to: <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code></li>
+                        <li>Add the URL of this page (including protocol and port): <code id="currentUrl"></code></li>
+                        <li>Set the dropdown to <strong>Enabled</strong></li>
+                        <li>Click "Relaunch" at the bottom of the page</li>
+                        <li>Return to this page after Chrome restarts</li>
+                    </ol>
+                    <p class="text-muted small">Note: This is a security workaround and should only be used in trusted environments.</p>
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="mb-4">Serial Port Proxy</h2>
+        
+        <div class="alert alert-success" id="successAlert" role="alert"></div>
+        <div class="alert alert-danger" id="errorAlert" role="alert"></div>
+        
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Client Serial Port 1</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span>
+                                    Status: 
+                                    <span class="status-indicator status-disconnected" id="clientStatus1"></span>
+                                    <span id="clientStatusText1">Disconnected</span>
+                                </span>
+                                <button class="btn btn-sm btn-primary" id="btnConnect1">Connect</button>
+                                <button class="btn btn-sm btn-danger" id="btnDisconnect1" disabled>Disconnect</button>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="baudRate1" class="form-label">Baud Rate</label>
+                            <select class="form-select" id="baudRate1">
+                                <option value="9600">9600</option>
+                                <option value="115200">115200</option>
+                                <option value="1000000" selected>1000000</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Client Serial Port 2</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span>
+                                    Status: 
+                                    <span class="status-indicator status-disconnected" id="clientStatus2"></span>
+                                    <span id="clientStatusText2">Disconnected</span>
+                                </span>
+                                <button class="btn btn-sm btn-primary" id="btnConnect2">Connect</button>
+                                <button class="btn btn-sm btn-danger" id="btnDisconnect2" disabled>Disconnect</button>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="baudRate2" class="form-label">Baud Rate</label>
+                            <select class="form-select" id="baudRate2">
+                                <option value="9600">9600</option>
+                                <option value="115200">115200</option>
+                                <option value="1000000" selected>1000000</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Server Serial Ports</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Port 1 -->
+                        <div class="mb-4">
+                            <h6>Port 1</h6>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span>
+                                        Status: 
+                                        <span class="status-indicator status-disconnected" id="serverStatus1"></span>
+                                        <span id="serverStatusText1">Disconnected</span>
+                                    </span>
+                                    <button class="btn btn-sm btn-primary" id="btnCreatePort1">Create Port</button>
+                                    <button class="btn btn-sm btn-danger" id="btnClosePort1" disabled>Close Port</button>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="serverPort1" class="form-label">Virtual Port</label>
+                                <input type="text" class="form-control" id="serverPort1" readonly>
+                            </div>
+                        </div>
+
+                        <!-- Port 2 -->
+                        <div class="mb-3">
+                            <h6>Port 2</h6>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span>
+                                        Status: 
+                                        <span class="status-indicator status-disconnected" id="serverStatus2"></span>
+                                        <span id="serverStatusText2">Disconnected</span>
+                                    </span>
+                                    <button class="btn btn-sm btn-primary" id="btnCreatePort2">Create Port</button>
+                                    <button class="btn btn-sm btn-danger" id="btnClosePort2" disabled>Close Port</button>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="serverPort2" class="form-label">Virtual Port</label>
+                                <input type="text" class="form-control" id="serverPort2" readonly>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="socketStatus" class="form-label">WebSocket Connection</label>
+                            <div class="d-flex">
+                                <span class="status-indicator status-disconnected" id="socketStatusIndicator"></span>
+                                <span id="socketStatusText">Disconnected</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5>Data Monitor</h5>
+                    <div>
+                        <button class="btn btn-sm btn-secondary" id="btnClearLog">Clear Log</button>
+                        <div class="form-check form-check-inline ms-2">
+                            <input class="form-check-input" type="checkbox" id="autoScroll" checked>
+                            <label class="form-check-label" for="autoScroll">Auto Scroll</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Connection Status Panel -->
+                <div class="connection-status-panel mb-3 p-3 border rounded bg-light">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0"><i class="bi bi-diagram-3"></i> Connection Status</h6>
+                        <span class="badge bg-secondary" id="lastUpdateTime">Last updated: Just now</span>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm table-borderless mb-0">
+                                <tr>
+                                    <td><strong>WebSocket:</strong></td>
+                                    <td>
+                                        <span class="status-indicator status-disconnected" id="statusPanelWebSocket"></span> 
+                                        <span id="statusTextWebSocket">Disconnected</span>
+                                        <button class="btn btn-sm btn-outline-secondary ms-2" id="btnReconnectWebSocket" style="padding: 0 0.4rem;">
+                                            <small>Reconnect</small>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Client Port 1:</strong></td>
+                                    <td>
+                                        <span class="status-indicator status-disconnected" id="statusPanelClient1"></span> 
+                                        <span id="statusTextClient1">Disconnected</span>
+                                        <span class="text-muted ms-2 small" id="clientPort1Info"></span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Client Port 2:</strong></td>
+                                    <td>
+                                        <span class="status-indicator status-disconnected" id="statusPanelClient2"></span> 
+                                        <span id="statusTextClient2">Disconnected</span>
+                                        <span class="text-muted ms-2 small" id="clientPort2Info"></span>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm table-borderless mb-0">
+                                <tr>
+                                    <td><strong>Server Port 1:</strong></td>
+                                    <td>
+                                        <span class="status-indicator status-disconnected" id="statusPanelServer1"></span> 
+                                        <span id="statusTextServer1">Disconnected</span>
+                                        <span class="text-muted ms-2 small" id="serverPort1Path"></span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Server Port 2:</strong></td>
+                                    <td>
+                                        <span class="status-indicator status-disconnected" id="statusPanelServer2"></span> 
+                                        <span id="statusTextServer2">Disconnected</span>
+                                        <span class="text-muted ms-2 small" id="serverPort2Path"></span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2">
+                                        <div class="progress mt-1" style="height: 5px;">
+                                            <div class="progress-bar bg-success" id="connectionHealthBar" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Data Transfer Statistics -->
+                <div class="data-stats-panel mb-3 p-2 border rounded">
+                    <h6>Data Transfer Statistics</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tr>
+                                    <th>Port</th>
+                                    <th>TX Bytes</th>
+                                    <th>RX Bytes</th>
+                                </tr>
+                                <tr>
+                                    <td>Port 1:</td>
+                                    <td id="statsTxPort1">0</td>
+                                    <td id="statsRxPort1">0</td>
+                                </tr>
+                                <tr>
+                                    <td>Port 2:</td>
+                                    <td id="statsTxPort2">0</td>
+                                    <td id="statsRxPort2">0</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <button class="btn btn-sm btn-outline-secondary" id="btnResetStats">Reset Statistics</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="dataLog"></div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5>Send Data</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="sendText" class="form-label">Text Data</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="sendText" placeholder="Enter text to send">
+                        <button class="btn btn-primary" type="button" id="btnSendText">Send</button>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label for="sendHex" class="form-label">Hex Data</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="sendHex" placeholder="Enter hex bytes (e.g. 01 FF A3)">
+                        <button class="btn btn-primary" type="button" id="btnSendHex">Send</button>
+                    </div>
+                    <div class="form-text">Separate bytes with spaces (e.g. 01 FF A3)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('currentUrl').textContent = window.location.href;
+            
+            // Add tooltips to status indicators
+            const statusElements = document.querySelectorAll('.status-indicator');
+            statusElements.forEach(element => {
+                // Create tooltip text based on connection state
+                const updateTooltip = () => {
+                    if (element.classList.contains('status-connected')) {
+                        element.title = 'Connected and operational';
+                    } else {
+                        element.title = 'Disconnected - click corresponding connect button to establish connection';
+                    }
+                };
+                
+                // Initial tooltip
+                updateTooltip();
+                
+                // Update tooltip when class changes via mutation observer
+                const observer = new MutationObserver(updateTooltip);
+                observer.observe(element, { attributes: true, attributeFilter: ['class'] });
+            });
+        });
+        
+        // Toggle Chrome Flag steps
+        function toggleChromeSteps() {
+            const steps = document.querySelector('.chrome-flag-steps');
+            steps.classList.toggle('show');
+        }
+        
+        // Check if Web Serial API is supported
+        if (!('serial' in navigator)) {
+            console.error('Web Serial API not available in this browser');
+            const errorDetails = [];
+            
+            // Check Chrome version
+            const chromeMatch = navigator.userAgent.match(/Chrome\/(\d+)/);
+            if (chromeMatch) {
+                const chromeVersion = parseInt(chromeMatch[1], 10);
+                if (chromeVersion < 89) {
+                    errorDetails.push(`Chrome version ${chromeVersion} detected. Web Serial API requires Chrome 89+`);
+                } else {
+                    errorDetails.push(`Chrome version ${chromeVersion} detected, which should support Web Serial API.`);
+                }
+            }
+            
+            // Check if we're in a secure context
+            if (!window.isSecureContext) {
+                errorDetails.push('Not in a secure context (HTTPS or localhost). Web Serial API requires a secure context.');
+            }
+            
+            // Construct detailed error message
+            let errorMsg = 'Web Serial API is not supported in this browser configuration.';
+            if (errorDetails.length > 0) {
+                errorMsg += ' Possible issues:\n• ' + errorDetails.join('\n• ');
+                errorMsg += '\n\nTry:\n• Using Chrome 89+ or Edge\n• Accessing via localhost instead of IP address\n• Checking chrome://flags and enable Experimental Web Platform features';
+            }
+            
+            showError(errorMsg);
+            
+            // Add an error banner at the top of the page
+            const errorBanner = document.createElement('div');
+            errorBanner.className = 'alert alert-danger';
+            errorBanner.style.display = 'block';
+            errorBanner.style.position = 'relative';
+            errorBanner.style.margin = '0 0 20px 0';
+            errorBanner.innerHTML = `<strong>Web Serial API Not Available</strong><br>
+                                    <div style="font-size: 0.9em;">${errorMsg.replace(/\n/g, '<br>')}</div>`;
+            document.querySelector('.container').prepend(errorBanner);
+        }
+        
+        // Client port variables
+        let serialPort1 = null;
+        let reader1 = null;
+        let readLoopRunning1 = false;
+        let serialPort2 = null;
+        let reader2 = null;
+        let readLoopRunning2 = false;
+        
+        // Track serial port info 
+        let port1Info = null;
+        let port2Info = null;
+        
+        // Debug mode
+        const DEBUG_MODE = true;
+        
+        // Helper function for logging
+        function debugLog(...args) {
+            if (DEBUG_MODE) {
+                console.log("[DEBUG]", ...args);
+            }
+        }
+        
+        // Helper function for logging binary data
+        function logBinaryData(data, prefix) {
+            if (!DEBUG_MODE) return;
+            
+            try {
+                // For hex strings
+                if (typeof data === 'string') {
+                    const asciiChars = [];
+                    for (let i = 0; i < data.length; i += 2) {
+                        const byte = parseInt(data.substring(i, i + 2), 16);
+                        // Only add printable ASCII characters
+                        if (byte >= 32 && byte <= 126) {
+                            asciiChars.push(String.fromCharCode(byte));
+                        } else {
+                            asciiChars.push('.');
+                        }
+                    }
+                    console.log(`${prefix} HEX: ${data} | ASCII: ${asciiChars.join('')} | LEN: ${data.length/2}`);
+                }
+                // For Uint8Array
+                else if (data instanceof Uint8Array) {
+                    const hexString = Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
+                    const asciiChars = Array.from(data).map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.');
+                    console.log(`${prefix} HEX: ${hexString} | ASCII: ${asciiChars.join('')} | LEN: ${data.length}`);
+                }
+            } catch (e) {
+                console.error("Error logging binary data:", e);
+            }
+        }
+        
+        // Socket.IO Configuration with robust reconnection settings
+        const socket = io({
+            reconnection: true,
+            reconnectionAttempts: Infinity,  // Never stop trying to reconnect
+            reconnectionDelay: 1000,         // Start with 1 second delay
+            reconnectionDelayMax: 10000,     // Maximum 10 seconds between attempts
+            timeout: 30000,                  // Increase timeout to 30 seconds
+            pingTimeout: 60000,              // Increase ping timeout
+            pingInterval: 25000,             // Increase ping interval
+            autoConnect: true,               // Connect automatically
+            forceNew: true,                  // Use a new connection
+            transports: ['websocket', 'polling'],  // Try WebSocket first, fallback to polling
+            upgrade: true,                   // Allow transport upgrade
+            rememberUpgrade: true            // Remember successful upgrades
+        });
+        
+        // Keep track of connection attempts
+        let reconnectAttempts = 0;
+        let lastConnectionTime = 0;
+        
+        // Handle heartbeat to detect silent disconnections
+        let heartbeatInterval = null;
+        const HEARTBEAT_INTERVAL = 10000; // 10 seconds
+        
+        function startHeartbeat() {
+            stopHeartbeat(); // Clear any existing interval
+            heartbeatInterval = setInterval(() => {
+                if (socket.connected) {
+                    // Send a ping to the server to keep connection alive
+                    socket.volatile.emit('heartbeat', { timestamp: Date.now() });
+                    debugLog('Heartbeat sent');
+                } else {
+                    debugLog('Heartbeat skipped - socket disconnected');
+                    attemptReconnection();
+                }
+            }, HEARTBEAT_INTERVAL);
+            debugLog('Heartbeat started');
+        }
+        
+        function stopHeartbeat() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+                debugLog('Heartbeat stopped');
+            }
+        }
+        
+        function attemptReconnection() {
+            // Only try to reconnect if we're not already connecting
+            if (!socket.connecting && !socket.connected) {
+                debugLog('Manually attempting reconnection...');
+                socket.connect();
+            }
+        }
+        
+        // Connection event handlers with improved error handling
+        socket.on('connect', () => {
+            updateSocketStatus(true);
+            reconnectAttempts = 0;
+            lastConnectionTime = Date.now();
+            console.log("WebSocket connected");
+            updateMonitorStatus();
+            startHeartbeat();
+            
+            // Notify user about successful connection
+            if (reconnectAttempts > 0) {
+                showSuccess("WebSocket reconnected successfully");
+            }
+        });
+        
+        socket.on('disconnect', (reason) => {
+            updateSocketStatus(false);
+            stopHeartbeat();
+            console.warn(`WebSocket disconnected. Reason: ${reason}`);
+            updateMonitorStatus();
+            
+            // Check if we should attempt manual reconnection
+            if (reason === 'io server disconnect' || reason === 'transport close') {
+                // Server closed the connection, so we need to reconnect manually
+                setTimeout(() => {
+                    attemptReconnection();
+                }, 1000);
+            }
+            
+            // Only show error to user for unexpected disconnections
+            if (reason !== 'io client disconnect') {
+                showError(`WebSocket disconnected: ${reason}. Attempting to reconnect...`);
+            }
+        });
+        
+        socket.on('connect_error', (error) => {
+            reconnectAttempts++;
+            console.error(`WebSocket connection error (attempt ${reconnectAttempts}):`, error);
+            updateSocketStatus(false);
+            updateMonitorStatus();
+            
+            // Show error only every few attempts to avoid flooding
+            if (reconnectAttempts === 1 || reconnectAttempts % 5 === 0) {
+                showError(`Connection error: ${error.message}. Retry attempt ${reconnectAttempts}...`);
+            }
+            
+            // If many attempts fail, suggest server might be down
+            if (reconnectAttempts > 10) {
+                console.warn("Multiple reconnection attempts failed. Server might be down.");
+            }
+        });
+        
+        socket.on('reconnect', (attemptNumber) => {
+            console.log(`WebSocket reconnected after ${attemptNumber} attempts`);
+            updateSocketStatus(true);
+            updateMonitorStatus();
+            showSuccess(`Reconnected after ${attemptNumber} attempts`);
+        });
+        
+        socket.on('reconnect_attempt', (attemptNumber) => {
+            console.log(`Attempting to reconnect... (attempt ${attemptNumber})`);
+            
+            // If we've been trying for a while, increase the reconnection delay
+            if (attemptNumber > 10) {
+                socket.io.reconnectionDelay(5000); // Wait 5 seconds between attempts after 10 tries
+            }
+        });
+        
+        socket.on('reconnect_error', (error) => {
+            console.error("Reconnection error:", error);
+        });
+        
+        socket.on('reconnect_failed', () => {
+            console.error("WebSocket reconnection failed after all attempts");
+            showError("Failed to reconnect. Please refresh the page or check if the server is running.");
+        });
+        
+        socket.on('error', (error) => {
+            console.error("Socket error:", error);
+            showError(`Socket error: ${error.message}`);
+        });
+        
+        // Custom heartbeat response from server
+        socket.on('heartbeat_response', (data) => {
+            const latency = Date.now() - data.timestamp;
+            debugLog(`Heartbeat response received. Latency: ${latency}ms`);
+        });
+        
+        // Handle page visibility change to manage connection
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                // Page is now visible, check connection and reconnect if needed
+                debugLog('Page visible, checking connection');
+                if (!socket.connected) {
+                    attemptReconnection();
+                }
+                startHeartbeat();
+            } else {
+                // Page is hidden, we can stop the heartbeat to save resources
+                debugLog('Page hidden, pausing heartbeat');
+                stopHeartbeat();
+            }
+        });
+        
+        // Handle page unload to properly close connections
+        window.addEventListener('beforeunload', () => {
+            stopHeartbeat();
+            if (socket.connected) {
+                socket.disconnect();
+            }
+        });
+        
+        // Manual reconnect button function
+        function manualReconnect() {
+            stopHeartbeat();
+            if (socket.connected) {
+                socket.disconnect();
+            }
+            setTimeout(() => {
+                attemptReconnection();
+            }, 500);
+            showSuccess("Attempting to reconnect...");
+        }
+        
+        // Connection status update timer
+        let lastStatusUpdate = Date.now();
+        let connectionHealthPercent = 0;
+        
+        // Helper function to extract port info
+        function getPortDebugInfo(info) {
+            if (!info) return "No info";
+            const vendorId = info.usbVendorId ? 
+                '0x' + info.usbVendorId.toString(16).padStart(4, '0').toUpperCase() : 'N/A';
+            const productId = info.usbProductId ? 
+                '0x' + info.usbProductId.toString(16).padStart(4, '0').toUpperCase() : 'N/A';
+            return `VID:${vendorId} PID:${productId}`;
+        }
+        
+        // Update connection health and timestamp
+        function updateConnectionHealth() {
+            const now = Date.now();
+            const elapsedSec = Math.floor((now - lastStatusUpdate) / 1000);
+            document.getElementById('lastUpdateTime').textContent = `Last updated: ${elapsedSec}s ago`;
+            
+            // Update health bar based on socket connection and ports
+            let healthPercent = 0;
+            if (socket.connected) healthPercent += 20;
+            if (clientStatus1.className.includes('connected')) healthPercent += 20;
+            if (clientStatus2.className.includes('connected')) healthPercent += 20;
+            if (serverStatus1.className.includes('connected')) healthPercent += 20;
+            if (serverStatus2.className.includes('connected')) healthPercent += 20;
+            
+            connectionHealthPercent = healthPercent;
+            const healthBar = document.getElementById('connectionHealthBar');
+            healthBar.style.width = `${healthPercent}%`;
+            
+            // Change color based on health
+            if (healthPercent < 40) {
+                healthBar.className = 'progress-bar bg-danger';
+            } else if (healthPercent < 80) {
+                healthBar.className = 'progress-bar bg-warning';
+            } else {
+                healthBar.className = 'progress-bar bg-success';
+            }
+        }
+        
+        // Initialize health update interval
+        setInterval(updateConnectionHealth, 1000);
+        
+        // Elements
+        const btnConnect1 = document.getElementById('btnConnect1');
+        const btnDisconnect1 = document.getElementById('btnDisconnect1');
+        const btnConnect2 = document.getElementById('btnConnect2');
+        const btnDisconnect2 = document.getElementById('btnDisconnect2');
+        const btnCreatePort1 = document.getElementById('btnCreatePort1');
+        const btnClosePort1 = document.getElementById('btnClosePort1');
+        const btnCreatePort2 = document.getElementById('btnCreatePort2');
+        const btnClosePort2 = document.getElementById('btnClosePort2');
+        const clientStatus1 = document.getElementById('clientStatus1');
+        const clientStatusText1 = document.getElementById('clientStatusText1');
+        const clientStatus2 = document.getElementById('clientStatus2');
+        const clientStatusText2 = document.getElementById('clientStatusText2');
+        const serverStatus1 = document.getElementById('serverStatus1');
+        const serverStatusText1 = document.getElementById('serverStatusText1');
+        const serverStatus2 = document.getElementById('serverStatus2');
+        const serverStatusText2 = document.getElementById('serverStatusText2');
+        const serverPort1 = document.getElementById('serverPort1');
+        const serverPort2 = document.getElementById('serverPort2');
+        const socketStatusIndicator = document.getElementById('socketStatusIndicator');
+        const socketStatusText = document.getElementById('socketStatusText');
+        const dataLog = document.getElementById('dataLog');
+        const btnClearLog = document.getElementById('btnClearLog');
+        const autoScroll = document.getElementById('autoScroll');
+        const btnSendText = document.getElementById('btnSendText');
+        const btnSendHex = document.getElementById('btnSendHex');
+        const sendText = document.getElementById('sendText');
+        const sendHex = document.getElementById('sendHex');
+        
+        // Status panel elements
+        const statusPanelWebSocket = document.getElementById('statusPanelWebSocket');
+        const statusTextWebSocket = document.getElementById('statusTextWebSocket');
+        const statusPanelClient1 = document.getElementById('statusPanelClient1');
+        const statusTextClient1 = document.getElementById('statusTextClient1');
+        const statusPanelClient2 = document.getElementById('statusPanelClient2');
+        const statusTextClient2 = document.getElementById('statusTextClient2');
+        const statusPanelServer1 = document.getElementById('statusPanelServer1');
+        const statusTextServer1 = document.getElementById('statusTextServer1');
+        const statusPanelServer2 = document.getElementById('statusPanelServer2');
+        const statusTextServer2 = document.getElementById('statusTextServer2');
+        
+        // Statistics elements
+        const statsTxPort1 = document.getElementById('statsTxPort1');
+        const statsRxPort1 = document.getElementById('statsRxPort1');
+        const statsTxPort2 = document.getElementById('statsTxPort2');
+        const statsRxPort2 = document.getElementById('statsRxPort2');
+        const btnResetStats = document.getElementById('btnResetStats');
+        
+        // Data transfer statistics
+        const dataStats = {
+            port1: { tx: 0, rx: 0 },
+            port2: { tx: 0, rx: 0 }
+        };
+        
+        // Update connection status in the monitor panel
+        function updateMonitorStatus() {
+            // Update timestamp for last status change
+            lastStatusUpdate = Date.now();
+            
+            // WebSocket
+            const wsConnected = socketStatusIndicator.className.includes('connected');
+            statusPanelWebSocket.className = socketStatusIndicator.className;
+            statusTextWebSocket.textContent = socketStatusText.textContent;
+            
+            // Client Ports
+            statusPanelClient1.className = clientStatus1.className;
+            statusTextClient1.textContent = clientStatusText1.textContent;
+            statusPanelClient2.className = clientStatus2.className;
+            statusTextClient2.textContent = clientStatusText2.textContent;
+            
+            // Add port info for client ports if available
+            if (port1Info) {
+                document.getElementById('clientPort1Info').textContent = getPortDebugInfo(port1Info);
+            } else {
+                document.getElementById('clientPort1Info').textContent = '';
+            }
+            
+            if (port2Info) {
+                document.getElementById('clientPort2Info').textContent = getPortDebugInfo(port2Info);
+            } else {
+                document.getElementById('clientPort2Info').textContent = '';
+            }
+            
+            // Server Ports
+            statusPanelServer1.className = serverStatus1.className;
+            statusTextServer1.textContent = serverStatusText1.textContent;
+            statusPanelServer2.className = serverStatus2.className;
+            statusTextServer2.textContent = serverStatusText2.textContent;
+            
+            // Show server port paths if available
+            document.getElementById('serverPort1Path').textContent = serverPort1.value || '';
+            document.getElementById('serverPort2Path').textContent = serverPort2.value || '';
+            
+            // Update the health indicator
+            updateConnectionHealth();
+        }
+        
+        // Update data statistics display
+        function updateStatsDisplay() {
+            statsTxPort1.textContent = dataStats.port1.tx;
+            statsRxPort1.textContent = dataStats.port1.rx;
+            statsTxPort2.textContent = dataStats.port2.tx;
+            statsRxPort2.textContent = dataStats.port2.rx;
+        }
+        
+        // Reset statistics counter
+        function resetDataStats() {
+            dataStats.port1.tx = 0;
+            dataStats.port1.rx = 0;
+            dataStats.port2.tx = 0;
+            dataStats.port2.rx = 0;
+            updateStatsDisplay();
+            showSuccess("Statistics reset");
+        }
+        
+        socket.on('port_status_update', (status) => {
+            console.log("Received port status update:", status);
+            if (status.port1) {
+                updateServerStatus('port1', status.port1.is_open);
+                serverPort1.value = status.port1.path || '';
+                btnClosePort1.disabled = !status.port1.is_open;
+                btnCreatePort1.disabled = status.port1.is_open;
+            }
+            if (status.port2) {
+                updateServerStatus('port2', status.port2.is_open);
+                serverPort2.value = status.port2.path || '';
+                btnClosePort2.disabled = !status.port2.is_open;
+                btnCreatePort2.disabled = status.port2.is_open;
+            }
+        });
+        
+        socket.on('port_status_change', (data) => {
+            console.log("Port status change:", data);
+            const portId = data.port_id;
+            const status = data.status;
+            
+            if (portId === 'port1') {
+                if (status === 'disconnected') {
+                    updateServerStatus('port1', false);
+                    showError("Server port 1 disconnected. Attempting recovery...");
+                } else if (status === 'reconnected') {
+                    updateServerStatus('port1', true);
+                    serverPort1.value = data.path || '';
+                    btnClosePort1.disabled = false;
+                    btnCreatePort1.disabled = true;
+                    showSuccess("Server port 1 reconnected");
+                }
+            } else if (portId === 'port2') {
+                if (status === 'disconnected') {
+                    updateServerStatus('port2', false);
+                    showError("Server port 2 disconnected. Attempting recovery...");
+                } else if (status === 'reconnected') {
+                    updateServerStatus('port2', true);
+                    serverPort2.value = data.path || '';
+                    btnClosePort2.disabled = false;
+                    btnCreatePort2.disabled = true;
+                    showSuccess("Server port 2 reconnected");
+                }
+            }
+        });
+        
+        socket.on('serial_data', (data) => {
+            // Data coming from the server (virtual port)
+            if (data.port_id) {
+                debugLog(`RECEIVED FROM SERVER (${data.port_id}): ${data.data.length/2} bytes`);
+                logBinaryData(data.data, `SERVER -> ${data.port_id}`);
+                
+                // Update statistics
+                const port = data.port_id === 'port1' ? 'port1' : 'port2';
+                dataStats[port].rx += data.data.length / 2;
+                updateStatsDisplay();
+                
+                // Log the data
+                appendToLog(data.data, 'rx', data.port_id);
+                
+                // Forward data to the corresponding physical port
+                forwardDataToPhysicalPort(data.data, data.port_id);
+            } else {
+                appendToLog(data.data, 'rx', 'port1'); // For backward compatibility
+            }
+        });
+        
+        // Forward data from virtual port to the corresponding physical serial port
+        async function forwardDataToPhysicalPort(hexData, portId) {
+            try {
+                // Determine which physical port to use
+                const port = portId === 'port1' ? serialPort1 : serialPort2;
+                const portNum = portId === 'port1' ? 1 : 2;
+                
+                if (port && port.writable) {
+                    const writer = port.writable.getWriter();
+                    
+                    try {
+                        // Convert hex string to byte array
+                        const data = new Uint8Array(hexData.length / 2);
+                        for (let i = 0; i < hexData.length; i += 2) {
+                            data[i / 2] = parseInt(hexData.substring(i, i + 2), 16);
+                        }
+                        
+                        debugLog(`FORWARDING TO PHYSICAL PORT ${portNum}: ${data.length} bytes`);
+                        logBinaryData(data, `FORWARDING -> PHYSICAL ${portNum}`);
+                        
+                        await writer.write(data);
+                        debugLog(`FORWARDED TO PHYSICAL PORT ${portNum}: ${data.length} bytes SUCCESSFULLY`);
+                    } finally {
+                        writer.releaseLock();
+                    }
+                } else {
+                    console.warn(`Cannot forward data to port ${portNum} - port not connected`);
+                }
+            } catch (error) {
+                console.error(`Error forwarding data to physical port (${portId}):`, error);
+            }
+        }
+        
+        // Button click events
+        btnConnect1.addEventListener('click', () => connectToSerialPort(1));
+        btnDisconnect1.addEventListener('click', () => disconnectFromSerialPort(1));
+        btnConnect2.addEventListener('click', () => connectToSerialPort(2));
+        btnDisconnect2.addEventListener('click', () => disconnectFromSerialPort(2));
+        btnCreatePort1.addEventListener('click', () => createServerPort('port1'));
+        btnClosePort1.addEventListener('click', () => closeServerPort('port1'));
+        btnCreatePort2.addEventListener('click', () => createServerPort('port2'));
+        btnClosePort2.addEventListener('click', () => closeServerPort('port2'));
+        btnClearLog.addEventListener('click', clearLog);
+        btnSendText.addEventListener('click', sendTextData);
+        btnSendHex.addEventListener('click', sendHexData);
+        btnResetStats.addEventListener('click', resetDataStats);
+        document.getElementById('btnReconnectWebSocket').addEventListener('click', manualReconnect);
+        
+        sendText.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendTextData();
+        });
+        
+        sendHex.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendHexData();
+        });
+        
+        // Functions
+        async function connectToSerialPort(clientPortNum) {
+            try {
+                // Request a port from the user (no filters)
+                const port = await navigator.serial.requestPort();
+                
+                // Get port configuration
+                const baudRate = parseInt(document.getElementById(`baudRate${clientPortNum}`).value || "1000000");
+                
+                // Open the port with simplified settings
+                await port.open({
+                    baudRate: baudRate,
+                    dataBits: 8,   // Default
+                    stopBits: 1,   // Default
+                    parity: 'none' // Default
+                });
+                
+                // Get port info for debugging
+                try {
+                    const info = await port.getInfo();
+                    console.log(`Connected port ${clientPortNum} info:`, getPortDebugInfo(info));
+                    
+                    if (clientPortNum === 1) {
+                        port1Info = info;
+                    } else {
+                        port2Info = info;
+                    }
+                } catch (infoError) {
+                    console.warn(`Couldn't get port info for port ${clientPortNum}:`, infoError);
+                }
+                
+                // Store the port in the appropriate variable
+                if (clientPortNum === 1) {
+                    serialPort1 = port;
+                    
+                    // Update UI
+                    updateClientStatus(1, true);
+                    btnConnect1.disabled = true;
+                    btnDisconnect1.disabled = false;
+                    
+                    // Start reading from the port
+                    startReadLoop(1);
+                    
+                    // Create server port if not already created
+                    if (!btnClosePort1.disabled) {
+                        createServerPort('port1');
+                    }
+                } else {
+                    serialPort2 = port;
+                    
+                    // Update UI
+                    updateClientStatus(2, true);
+                    btnConnect2.disabled = true;
+                    btnDisconnect2.disabled = false;
+                    
+                    // Start reading from the port
+                    startReadLoop(2);
+                    
+                    // Create server port if not already created
+                    if (!btnClosePort2.disabled) {
+                        createServerPort('port2');
+                    }
+                }
+                
+                // Show success message
+                showSuccess(`Connected to client serial port ${clientPortNum} at ${baudRate} baud`);
+            } catch (error) {
+                console.error(`Error connecting to serial port ${clientPortNum}:`, error);
+                showError(`Failed to connect port ${clientPortNum}: ${error.message}`);
+            }
+        }
+        
+        async function disconnectFromSerialPort(clientPortNum) {
+            try {
+                if (clientPortNum === 1) {
+                    // Clear port info
+                    port1Info = null;
+                    
+                    if (readLoopRunning1) {
+                        readLoopRunning1 = false;
+                        if (reader1) {
+                            try {
+                                await reader1.cancel();
+                            } catch (err) {
+                                console.warn(`Error canceling reader for port 1: ${err.message}`);
+                            }
+                            reader1 = null;
+                        }
+                    }
+                    
+                    if (serialPort1) {
+                        try {
+                            if (serialPort1.readable) {
+                                await serialPort1.close();
+                            }
+                        } catch (err) {
+                            // Ignore "device lost" errors during close
+                            if (!err.message.includes('device has been lost')) {
+                                throw err;
+                            } else {
+                                console.warn(`Device 1 was already disconnected: ${err.message}`);
+                            }
+                        } finally {
+                            serialPort1 = null;
+                        }
+                    }
+                    
+                    // Update UI regardless of errors
+                    updateClientStatus(1, false);
+                    btnConnect1.disabled = false;
+                    btnDisconnect1.disabled = true;
+                } else {
+                    // Clear port info
+                    port2Info = null;
+                    
+                    if (readLoopRunning2) {
+                        readLoopRunning2 = false;
+                        if (reader2) {
+                            try {
+                                await reader2.cancel();
+                            } catch (err) {
+                                console.warn(`Error canceling reader for port 2: ${err.message}`);
+                            }
+                            reader2 = null;
+                        }
+                    }
+                    
+                    if (serialPort2) {
+                        try {
+                            if (serialPort2.readable) {
+                                await serialPort2.close();
+                            }
+                        } catch (err) {
+                            // Ignore "device lost" errors during close
+                            if (!err.message.includes('device has been lost')) {
+                                throw err;
+                            } else {
+                                console.warn(`Device 2 was already disconnected: ${err.message}`);
+                            }
+                        } finally {
+                            serialPort2 = null;
+                        }
+                    }
+                    
+                    // Update UI regardless of errors
+                    updateClientStatus(2, false);
+                    btnConnect2.disabled = false;
+                    btnDisconnect2.disabled = true;
+                }
+                
+                // Show success message
+                showSuccess(`Disconnected from client serial port ${clientPortNum}`);
+            } catch (error) {
+                console.error(`Error disconnecting from serial port ${clientPortNum}:`, error);
+                showError(`Failed to disconnect port ${clientPortNum}: ${error.message}`);
+                
+                // Even if there was an error, make sure the UI is updated properly
+                if (clientPortNum === 1) {
+                    updateClientStatus(1, false);
+                    btnConnect1.disabled = false;
+                    btnDisconnect1.disabled = true;
+                    serialPort1 = null;
+                    reader1 = null;
+                    readLoopRunning1 = false;
+                } else {
+                    updateClientStatus(2, false);
+                    btnConnect2.disabled = false;
+                    btnDisconnect2.disabled = true;
+                    serialPort2 = null;
+                    reader2 = null;
+                    readLoopRunning2 = false;
+                }
+            }
+        }
+        
+        async function createServerPort(portId) {
+            try {
+                // Get port configuration
+                let baudRate = 1000000; // Default to 1000000
+                
+                // Try to get from the respective client port's baudrate selector
+                if (portId === 'port1' && document.getElementById('baudRate1')) {
+                    baudRate = parseInt(document.getElementById('baudRate1').value);
+                } else if (portId === 'port2' && document.getElementById('baudRate2')) {
+                    baudRate = parseInt(document.getElementById('baudRate2').value);
+                }
+                
+                const response = await fetch('/api/create_port', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        port_id: portId,
+                        baud_rate: baudRate,
+                        data_bits: 8,      // Default
+                        stop_bits: 1,      // Default
+                        parity: 'none'     // Default
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Update UI
+                    updateServerStatus(portId, true);
+                    if (portId === 'port1') {
+                        serverPort1.value = data.port;
+                        btnCreatePort1.disabled = true;
+                        btnClosePort1.disabled = false;
+                    } else {
+                        serverPort2.value = data.port;
+                        btnCreatePort2.disabled = true;
+                        btnClosePort2.disabled = false;
+                    }
+                    
+                    // Show success message
+                    showSuccess(`Created virtual serial port ${portId}: ${data.port}`);
+                } else {
+                    showError(`Failed to create port: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error creating server port:', error);
+                showError(`Failed to create port: ${error.message}`);
+            }
+        }
+        
+        async function closeServerPort(portId) {
+            try {
+                const response = await fetch('/api/close_port', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        port_id: portId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Update UI
+                    updateServerStatus(portId, false);
+                    if (portId === 'port1') {
+                        serverPort1.value = '';
+                        btnCreatePort1.disabled = false;
+                        btnClosePort1.disabled = true;
+                    } else {
+                        serverPort2.value = '';
+                        btnCreatePort2.disabled = false;
+                        btnClosePort2.disabled = true;
+                    }
+                    
+                    // Show success message
+                    showSuccess(`Closed virtual serial port ${portId}`);
+                } else {
+                    showError(`Failed to close port: ${data.error}`);
+                }
+            } catch (error) {
+                console.error('Error closing server port:', error);
+                showError(`Failed to close port: ${error.message}`);
+            }
+        }
+        
+        async function startReadLoop(clientPortNum) {
+            const port = clientPortNum === 1 ? serialPort1 : serialPort2;
+            const serverPortId = clientPortNum === 1 ? 'port1' : 'port2';
+            
+            if (!port || !port.readable) {
+                return;
+            }
+            
+            if (clientPortNum === 1) {
+                readLoopRunning1 = true;
+            } else {
+                readLoopRunning2 = true;
+            }
+            
+            debugLog(`Starting read loop for client port ${clientPortNum} -> server ${serverPortId}`);
+            
+            try {
+                const reader = port.readable.getReader();
+                if (clientPortNum === 1) {
+                    reader1 = reader;
+                } else {
+                    reader2 = reader;
+                }
+                
+                while (clientPortNum === 1 ? readLoopRunning1 : readLoopRunning2) {
+                    try {
+                        const { value, done } = await reader.read();
+                        
+                        if (done) {
+                            debugLog(`Read loop for port ${clientPortNum} done signal received`);
+                            break;
+                        }
+                        
+                        if (value) {
+                            debugLog(`READ FROM PHYSICAL PORT ${clientPortNum}: ${value.length} bytes`);
+                            logBinaryData(value, `PHYSICAL ${clientPortNum} -> SERVER`);
+                            
+                            // Convert the received data to hex string
+                            const hexData = Array.from(value)
+                                .map(b => b.toString(16).padStart(2, '0'))
+                                .join('');
+                            
+                            // Update statistics
+                            const port = serverPortId === 'port1' ? 'port1' : 'port2';
+                            dataStats[port].tx += value.length;
+                            updateStatsDisplay();
+                            
+                            // Send the data to the server with port information
+                            socket.emit('serial_data', { data: hexData, port_id: serverPortId });
+                            debugLog(`SENT TO SERVER (${serverPortId}): ${hexData.length/2} bytes`);
+                            
+                            // Log the data
+                            appendToLog(hexData, 'tx', serverPortId);
+                        }
+                    } catch (readError) {
+                        // Check if it's a disconnection error
+                        if (readError.name === 'NetworkError' && readError.message.includes('device has been lost')) {
+                            console.warn(`Device ${clientPortNum} disconnected unexpectedly`);
+                            showError(`Device ${clientPortNum} disconnected unexpectedly. Reconnect if needed.`);
+                            
+                            // Clean up and update UI
+                            await disconnectFromSerialPort(clientPortNum);
+                            break;
+                        } else {
+                            // For other errors, log and continue
+                            console.error(`Error reading from port ${clientPortNum}:`, readError);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`Error in read loop for port ${clientPortNum}:`, error);
+                showError(`Read error on port ${clientPortNum}: ${error.message}`);
+                
+                // If there's an error, make sure we clean up properly
+                await disconnectFromSerialPort(clientPortNum);
+            } finally {
+                debugLog(`Exiting read loop for client port ${clientPortNum}`);
+                if (clientPortNum === 1 && reader1) {
+                    try {
+                        reader1.releaseLock();
+                    } catch (e) {
+                        console.warn(`Error releasing lock for reader ${clientPortNum}:`, e);
+                    }
+                    reader1 = null;
+                    readLoopRunning1 = false;
+                } else if (clientPortNum === 2 && reader2) {
+                    try {
+                        reader2.releaseLock();
+                    } catch (e) {
+                        console.warn(`Error releasing lock for reader ${clientPortNum}:`, e);
+                    }
+                    reader2 = null;
+                    readLoopRunning2 = false;
+                }
+            }
+        }
+        
+        function appendToLog(hexData, direction, portId) {
+            const timestamp = new Date().toLocaleTimeString('en-US', { 
+                hour12: false, 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+            
+            // Convert hex string to bytes array
+            const bytes = [];
+            for (let i = 0; i < hexData.length; i += 2) {
+                bytes.push(hexData.substring(i, i + 2));
+            }
+            
+            // Create log entry with timestamp, direction and port
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<span>[${timestamp}] [${direction === 'tx' ? 'TX →' : 'RX ←'}] [${portId}]</span> `;
+            
+            // Add the hex bytes
+            bytes.forEach(byte => {
+                const byteSpan = document.createElement('span');
+                byteSpan.className = `hex-byte data-direction-${direction}`;
+                byteSpan.textContent = byte;
+                logEntry.appendChild(byteSpan);
+            });
+            
+            // Add ASCII representation if possible
+            try {
+                const asciiChars = [];
+                for (let i = 0; i < hexData.length; i += 2) {
+                    const byte = parseInt(hexData.substring(i, i + 2), 16);
+                    // Only add printable ASCII characters
+                    if (byte >= 32 && byte <= 126) {
+                        asciiChars.push(String.fromCharCode(byte));
+                    } else {
+                        asciiChars.push('.');
+                    }
+                }
+                
+                if (asciiChars.length > 0) {
+                    const asciiSpan = document.createElement('span');
+                    asciiSpan.className = 'ms-2';
+                    asciiSpan.textContent = `  '${asciiChars.join('')}'`;
+                    logEntry.appendChild(asciiSpan);
+                }
+            } catch (error) {
+                console.error('Error creating ASCII representation:', error);
+            }
+            
+            // Add to log
+            dataLog.appendChild(logEntry);
+            
+            // Auto scroll if enabled
+            if (autoScroll.checked) {
+                dataLog.scrollTop = dataLog.scrollHeight;
+            }
+        }
+        
+        function clearLog() {
+            dataLog.innerHTML = '';
+        }
+        
+        async function sendTextData() {
+            const text = sendText.value;
+            if (!text) {
+                return;
+            }
+            
+            // Determine which ports to send to based on connection status
+            await sendDataToConnectedPorts(text);
+            
+            // Clear the input field
+            sendText.value = '';
+        }
+        
+        async function sendHexData() {
+            const hexString = sendHex.value.replace(/\s+/g, '');
+            if (!hexString || hexString.length % 2 !== 0) {
+                showError('Invalid hex data. Must be an even number of hex characters.');
+                return;
+            }
+            
+            // Convert hex string to byte array
+            const data = new Uint8Array(hexString.length / 2);
+            for (let i = 0; i < hexString.length; i += 2) {
+                data[i / 2] = parseInt(hexString.substring(i, i + 2), 16);
+            }
+            
+            // Determine which ports to send to based on connection status
+            await sendDataToConnectedPorts(data);
+            
+            // Clear the input field
+            sendHex.value = '';
+        }
+        
+        async function sendDataToConnectedPorts(data) {
+            // Send to port 1 if connected
+            if (serialPort1 && serialPort1.writable) {
+                try {
+                    const writer = serialPort1.writable.getWriter();
+                    try {
+                        const dataToWrite = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+                        await writer.write(dataToWrite);
+                    } finally {
+                        writer.releaseLock();
+                    }
+                } catch (error) {
+                    console.error('Error sending data to port 1:', error);
+                    showError(`Failed to send to port 1: ${error.message}`);
+                }
+            }
+            
+            // Send to port 2 if connected
+            if (serialPort2 && serialPort2.writable) {
+                try {
+                    const writer = serialPort2.writable.getWriter();
+                    try {
+                        const dataToWrite = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+                        await writer.write(dataToWrite);
+                    } finally {
+                        writer.releaseLock();
+                    }
+                } catch (error) {
+                    console.error('Error sending data to port 2:', error);
+                    showError(`Failed to send to port 2: ${error.message}`);
+                }
+            }
+        }
+        
+        function updateClientStatus(clientPortNum, connected) {
+            if (clientPortNum === 1) {
+                clientStatus1.className = `status-indicator status-${connected ? 'connected' : 'disconnected'}`;
+                clientStatusText1.textContent = connected ? 'Connected' : 'Disconnected';
+            } else {
+                clientStatus2.className = `status-indicator status-${connected ? 'connected' : 'disconnected'}`;
+                clientStatusText2.textContent = connected ? 'Connected' : 'Disconnected';
+            }
+            updateMonitorStatus();
+        }
+        
+        function updateServerStatus(portId, connected) {
+            if (portId === 'port1') {
+                serverStatus1.className = `status-indicator status-${connected ? 'connected' : 'disconnected'}`;
+                serverStatusText1.textContent = connected ? 'Connected' : 'Disconnected';
+                btnCreatePort1.disabled = connected;
+                btnClosePort1.disabled = !connected;
+            } else {
+                serverStatus2.className = `status-indicator status-${connected ? 'connected' : 'disconnected'}`;
+                serverStatusText2.textContent = connected ? 'Connected' : 'Disconnected';
+                btnCreatePort2.disabled = connected;
+                btnClosePort2.disabled = !connected;
+            }
+            updateMonitorStatus();
+        }
+        
+        function updateSocketStatus(connected) {
+            socketStatusIndicator.className = `status-indicator status-${connected ? 'connected' : 'disconnected'}`;
+            socketStatusText.textContent = connected ? 'Connected' : 'Disconnected';
+            updateMonitorStatus();
+        }
+        
+        function showSuccess(message) {
+            const alert = document.getElementById('successAlert');
+            alert.textContent = message;
+            alert.style.display = 'block';
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 3000);
+        }
+        
+        function showError(message) {
+            const alert = document.getElementById('errorAlert');
+            alert.textContent = message;
+            alert.style.display = 'block';
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html> 
