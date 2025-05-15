@@ -364,12 +364,47 @@
                 </div>
             </div>
         </div>
-    </div>
-    
+        </div> <!-- col-md-6 LEFT COLUMN ends later -->
+
+                <!-- Camera Client -->
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5>Client Camera</h5>
+                        <div class="mb-3">
+                            <label for="cameraDeviceSelect" class="form-label">Select Camera</label>
+                            <select class="form-select" id="cameraDeviceSelect">
+                                <option value="" disabled selected>Loading cameras...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span>
+                                    Status:
+                                    <span class="status-indicator status-disconnected" id="cameraStatus"></span>
+                                    <span id="cameraStatusText">Disconnected</span>
+                                </span>
+                                <button class="btn btn-sm btn-primary" id="btnCameraConnect">Connect</button>
+                                <button class="btn btn-sm btn-danger" id="btnCameraDisconnect" disabled>Disconnect</button>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="cameraFps" class="form-label">FPS</label>
+                            <select class="form-select" id="cameraFps">
+                                <option value="5">5</option>
+                                <option value="10" selected>10</option>
+                                <option value="15">15</option>
+                                <option value="30">30</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             document.getElementById('currentUrl').textContent = window.location.href;
-            
+
             // Add tooltips to status indicators
             const statusElements = document.querySelectorAll('.status-indicator');
             statusElements.forEach(element => {
@@ -381,14 +416,36 @@
                         element.title = 'Disconnected - click corresponding connect button to establish connection';
                     }
                 };
-                
+
                 // Initial tooltip
                 updateTooltip();
-                
+
                 // Update tooltip when class changes via mutation observer
                 const observer = new MutationObserver(updateTooltip);
                 observer.observe(element, { attributes: true, attributeFilter: ['class'] });
             });
+
+            // Camera selection: define and use a reusable function for device enumeration
+            async function populateCameraList() {
+                try {
+                    // Ensure permissions are granted to see labels
+                    await navigator.mediaDevices.getUserMedia({ video: true });
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+                    const select = document.getElementById('cameraDeviceSelect');
+                    select.innerHTML = '';  // clear placeholder
+                    videoDevices.forEach((device, idx) => {
+                        const opt = document.createElement('option');
+                        opt.value = device.deviceId;
+                        opt.textContent = device.label || `Camera ${idx + 1}`;
+                        select.appendChild(opt);
+                    });
+                } catch (err) {
+                    console.error('Error populating camera list:', err);
+                }
+            }
+            await populateCameraList();
+            navigator.mediaDevices.addEventListener('devicechange', populateCameraList);
         });
         
         // Toggle Chrome Flag steps
@@ -445,6 +502,11 @@
         let serialPort2 = null;
         let reader2 = null;
         let readLoopRunning2 = false;
+
+        // Camera variables
+        let cameraStream = null;
+        let cameraInterval = null;
+        const CAMERA_EVENT = 'video_frame';
         
         // Track serial port info 
         let port1Info = null;
@@ -943,6 +1005,8 @@
         btnSendHex.addEventListener('click', sendHexData);
         btnResetStats.addEventListener('click', resetDataStats);
         document.getElementById('btnReconnectWebSocket').addEventListener('click', manualReconnect);
+        document.getElementById('btnCameraConnect').addEventListener('click', connectCamera);
+        document.getElementById('btnCameraDisconnect').addEventListener('click', disconnectCamera);
         
         sendText.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendTextData();
@@ -1492,6 +1556,75 @@
             setTimeout(() => {
                 alert.style.display = 'none';
             }, 5000);
+        }
+        // -----------------------------------------------------------
+        // Camera connect / disconnect
+        // -----------------------------------------------------------
+        async function connectCamera() {
+            try {
+                const fps = parseInt(document.getElementById('cameraFps').value || '10');
+                const deviceId = document.getElementById('cameraDeviceSelect').value;
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: deviceId ? { deviceId: { exact: deviceId } } : true,
+                    audio: false
+                });
+
+                // Update UI
+                updateCameraStatus(true);
+                document.getElementById('btnCameraConnect').disabled = true;
+                document.getElementById('btnCameraDisconnect').disabled = false;
+
+                const video = document.createElement('video');
+                video.srcObject = cameraStream;
+                await video.play();
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                cameraInterval = setInterval(() => {
+                    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    canvas.toBlob(blob => {
+                        if (blob && socket.connected) {
+                            socket.emit(CAMERA_EVENT, { data: blob, cam_id: 'cam1' }, { binary: true });
+                        }
+                    }, 'image/jpeg', 0.7);
+                }, 1000 / fps);
+
+                showSuccess('Camera streaming started');
+            } catch (err) {
+                console.error('Camera connect error:', err);
+                showError('Failed to access camera: ' + err.message);
+            }
+        }
+
+        async function disconnectCamera() {
+            try {
+                if (cameraInterval) {
+                    clearInterval(cameraInterval);
+                    cameraInterval = null;
+                }
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(t => t.stop());
+                    cameraStream = null;
+                }
+                updateCameraStatus(false);
+                document.getElementById('btnCameraConnect').disabled = false;
+                document.getElementById('btnCameraDisconnect').disabled = true;
+                showSuccess('Camera disconnected');
+            } catch (err) {
+                console.error('Camera disconnect error:', err);
+                showError('Error disconnecting camera: ' + err.message);
+            }
+        }
+
+        function updateCameraStatus(connected) {
+            const indicator = document.getElementById('cameraStatus');
+            const text = document.getElementById('cameraStatusText');
+            indicator.className = `status-indicator status-${connected ? 'connected' : 'disconnected'}`;
+            text.textContent = connected ? 'Connected' : 'Disconnected';
         }
     </script>
 </body>
