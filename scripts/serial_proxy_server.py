@@ -30,6 +30,8 @@ import errno
 import subprocess
 import sys
 import stat
+from collections import deque
+import base64
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -107,6 +109,12 @@ virtual_ports = {
         'reconnect_attempts': 0,
         'last_error_time': 0
     }
+}
+# -----------------------------------------------------------
+# Video stream management – simulated "camera ports"
+# -----------------------------------------------------------
+video_streams = {
+    'cam1': deque(maxlen=30)  # default camera buffer
 }
 
 # Keep track of connected clients
@@ -574,6 +582,14 @@ def read_from_virtual_port(port_id):
 def index():
     return render_template('serial_proxy.html')
 
+@app.route('/api/latest_frame/<cam_id>')
+def latest_frame(cam_id):
+    """Return newest frame as JPEG/PNG bytes"""
+    frames = video_streams.get(cam_id)
+    if not frames:
+        return ("No frame", 404)
+    return (frames[-1], 200, {'Content-Type': 'image/jpeg'})
+
 @app.route('/api/port_status')
 def port_status():
     return jsonify({
@@ -635,6 +651,35 @@ def api_close_port():
     except Exception as e:
         logger.error(f"Error closing port: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+    
+# -----------------------------------------------------------
+@socketio.on('video_frame')
+def handle_video_frame(message):
+    """
+    message = { "data": <binary | base64>, "cam_id": "cam1" }
+    """
+    try:
+        cam_id = message.get('cam_id', 'cam1')
+        frame_data = message.get('data')
+
+        # base64 → bytes
+        if isinstance(frame_data, str):
+            frame_data = base64.b64decode(frame_data.split(',')[-1])
+
+        if not isinstance(frame_data, (bytes, bytearray)):
+            logger.warning(f"Unsupported frame from {cam_id}")
+            return
+
+        # שמירה + שידור
+        video_streams.setdefault(cam_id, deque(maxlen=30)).append(frame_data)
+        socketio.emit(
+            'video_frame',
+            {'data': frame_data, 'cam_id': cam_id},
+            broadcast=True,
+            binary=True
+        )
+    except Exception as e:
+        logger.error(f"video_frame error ({cam_id}): {e}")
 
 # WebSocket events
 @socketio.on('connect')
