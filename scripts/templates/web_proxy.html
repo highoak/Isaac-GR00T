@@ -11,8 +11,16 @@
 </head>
 <body>
     <h1>SO100 Robot Control</h1>
+<<<<<<< HEAD
     <input type="text" id="runpod-url" placeholder="RunPod WebSocket URL (e.g., wss://your-runpod:8765)">
     <button onclick="connectWebSocket()">Connect to RunPod</button><br>
+=======
+    <input type="text" id="api-key" placeholder="RunPod API KEY" value="">
+    <input type="text" id="worker-id" placeholder="Worker ID" value="kybzofxj9a0p63">
+    <button onclick="wakeWorker()">Wake Worker</button>
+    <input type="text" id="runpod-url" placeholder="auto-filled ws://IP:PORT" readonly>
+    <button onclick="connectWebSocket()">Connect WS</button><br>
+>>>>>>> bfa1264 (ready to test runpod inference)
     <button onclick="selectPort()">Select Motor Port</button>
     <button onclick="startInference()">Start Inference</button>
     <video id="webcam" autoplay></video>
