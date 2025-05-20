@@ -1,71 +1,26 @@
-import runpod
-import subprocess
-import os
-import json
-import base64
-import tempfile
+import os, asyncio, websockets, runpod
+
+async def ws_server():
+    async def echo(ws):
+        async for msg in ws:
+            if msg == "shutdown":
+                await ws.close()
+                asyncio.get_event_loop().stop()
+            # …here you would call handle_client() from eval_gr00t_so100.py …
+    return await websockets.serve(echo, "0.0.0.0", 8765)
 
 def handler(event):
-    """
-    This generator processes incoming requests to your Serverless endpoint and
-    executes a base64-encoded shell script. The script is decoded, saved to a temporary
-    file, and executed. The output is streamed back to the caller in real-time.
-    """
+    # 1) boot the WebSocket server
+    asyncio.get_event_loop().create_task(ws_server())
 
-    print("Worker Start")
-    input_data = event.get("input", {})
+    # 2) publish IP & port
+    ip  = os.environ.get("RUNPOD_HTTP_IP")
+    port = os.environ.get("RUNPOD_TCP_PORT_8765", 8765)
+    runpod.serverless.progress_update({"ip": ip, "port": int(port)})
 
-    # Get the base64 encoded script
-    encoded_script = input_data.get("script")
-
-    if not encoded_script:
-        yield {
-            "error": "No base64 encoded script provided in the input",
-            "exit_code": 1
-        }
-        return
-
-    try:
-        # Decode the base64 script
-        script_content = base64.b64decode(encoded_script).decode('utf-8')
-        
-        # Create a temporary file to store the script
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as temp_script:
-            temp_script.write(script_content)
-            script_path = temp_script.name
-
-        # Make the script executable
-        os.chmod(script_path, 0o755)
-
-        print(f"Executing script from: {script_path}")
-
-        # Start the subprocess and stream combined stdout & stderr
-        process = subprocess.Popen(
-            script_path,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Combine stderr with stdout for ordering
-            text=True,
-            bufsize=1                 # Line-buffered
-        )
-
-        # Yield output in real-time
-        for line in iter(process.stdout.readline, ""):
-            yield {"output": line.rstrip("\n")}
-
-        # Wait for the process to finish and capture its exit code
-        process.wait()
-        
-        # Clean up the temporary file
-        os.unlink(script_path)
-        
-        yield {"exit_code": process.returncode}
-
-    except Exception as e:
-        yield {
-            "error": str(e),
-            "exit_code": 1
-        }
+    # 3) block until shutdown
+    asyncio.get_event_loop().run_forever()
+    return {"shutdown": True}
 
 # Start the Serverless function when the script is run
 if __name__ == '__main__':
