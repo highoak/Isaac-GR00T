@@ -4,7 +4,7 @@ COPY ../ /app
 RUN echo "ls -R && pwd" && pwd && ls -R
 COPY pyproject.toml .
 RUN apt-get update && apt-get install -y python3-pip wget git-lfs && ls -R && pwd
-RUN pip3 install -e .
+RUN pip3 install .
 RUN pip3 install --no-cache-dir torch==2.2.2+cu118 torchvision==0.17.2+cu118 torchaudio==2.2.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118 && \
     pip3 install --no-cache-dir numpy pillow websockets lerobot "networkx<3.2"
 RUN apt-get update && apt-get install -y git-lfs && \
