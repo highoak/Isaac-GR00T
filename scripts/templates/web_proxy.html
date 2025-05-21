@@ -121,7 +121,6 @@
                 const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${key}`},body:JSON.stringify({input:{wake:true}})});
                 const run=await res.json();
                 if(!run.id){console.error('No job id');return;}
-                console.log("run", run.id);
                 // poll status for ip/port
                 const statusUrl=`https://api.runpod.ai/v2/${wid}/status/${run.id}`;
                 const poll=setInterval(async()=>{
