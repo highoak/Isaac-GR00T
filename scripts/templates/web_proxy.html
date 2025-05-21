@@ -14,6 +14,7 @@
     <input type="text" id="api-key" placeholder="RunPod API KEY" value="">
     <input type="text" id="worker-id" placeholder="Worker ID" value="kybzofxj9a0p63">
     <button onclick="wakeWorker()">Wake Worker</button>
+    <button onclick="cancelJob()" id="cancelBtn" disabled>Cancel Job</button>
     <input type="text" id="runpod-url" placeholder="auto-filled ws://IP:PORT" readonly>
     <button onclick="connectWebSocket()">Connect WS</button><br>
     <button onclick="selectPort()">Select Motor Port</button>
@@ -25,6 +26,7 @@
         let ws;
         let serialPort;
         let writer;
+        let currentJobId;
         const videoElem = document.getElementById('webcam');
 
         async function connectWebSocket() {
@@ -123,6 +125,8 @@
                 console.log("res", res);
                 const run=await res.json();
                 if(!run.id){console.error('No job id');return;}
+                currentJobId = run.id;
+                document.getElementById('cancelBtn').disabled = false;
                 console.log("run", run);
                 // poll status for ip/port
                 const statusUrl=`https://api.runpod.ai/v2/${wid}/status/${run.id}`;
@@ -141,6 +145,39 @@
                     }
                 },2000);
             }catch(e){console.error(e);}        
+        }
+
+        async function cancelJob() {
+            if (!currentJobId) return;
+            const key = document.getElementById('api-key').value.trim();
+            const wid = document.getElementById('worker-id').value.trim();
+            const url = `https://api.runpod.ai/v2/${wid}/cancel/${currentJobId}`;
+            try {
+                // First, send shutdown signal if WebSocket is connected
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    console.log("sending shutdown signal");
+                    ws.send("shutdown");
+                    ws.close();
+                }
+
+                // Then cancel the job
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${key}`
+                    }
+                });
+                if (res.ok) {
+                    console.log('Job cancelled and worker shutdown');
+                    document.getElementById('cancelBtn').disabled = true;
+                    document.getElementById('runpod-url').value = '';
+                    currentJobId = null;
+                    ws = null;
+                }
+            } catch(e) {
+                console.error('Failed to cancel job:', e);
+            }
         }
     </script>
 </body>

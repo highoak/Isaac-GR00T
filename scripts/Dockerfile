@@ -21,13 +21,13 @@ RUN pip3 install --no-cache-dir \
     torchaudio==2.2.2+cu118 \
     --extra-index-url https://download.pytorch.org/whl/cu118
 
-# Install Hugging Face dependencies with specific versions
+# Install Hugging Face dependencies with compatible versions
 RUN pip3 install --no-cache-dir \
-    huggingface-hub==0.16.4 \
-    diffusers==0.21.4 \
-    transformers==4.45.2 \
-    accelerate==1.2.1 \
-    peft==0.14.0
+    transformers==4.30.2 \
+    diffusers==0.18.2 \
+    huggingface-hub==0.15.1 \
+    accelerate==0.20.3 \
+    peft==0.4.0
 
 # Install other project dependencies
 RUN pip3 install --no-cache-dir \
