@@ -1,6 +1,5 @@
 FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
 WORKDIR /app
-COPY . /app
 COPY pyproject.toml .
 COPY gr00t /app/gr00t
 RUN apt-get update && apt-get install -y python3-pip wget git-lfs
