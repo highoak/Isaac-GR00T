@@ -109,6 +109,7 @@
 
         function shutdownWorker(){
             if(ws && ws.readyState===WebSocket.OPEN){
+                console.log("sending shutdown signal");
                 ws.send("shutdown");
                 ws.close();
                 console.log("Shutdown signal sent");

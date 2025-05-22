@@ -2,7 +2,7 @@ import os
 import asyncio
 import websockets
 import runpod
-from eval_gr00t_so100 import handle_client
+from .getting_started.examples.eval_gr00t_so100 import handle_client
 
 async def ws_server():
     server = await websockets.serve(handle_client, "0.0.0.0", 8765)
