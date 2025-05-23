@@ -20,15 +20,7 @@ RUN pip3 install --no-cache-dir \
     torchaudio==2.2.2+cu118 \
     --extra-index-url https://download.pytorch.org/whl/cu118
 
-# Install Hugging Face dependencies with compatible versions
-RUN pip3 install --no-cache-dir \
-    transformers==4.30.2 \
-    diffusers==0.18.2 \
-    huggingface-hub==0.15.1 \
-    accelerate==0.20.3 \
-    peft==0.4.0
-
-# Install other project dependencies
+# Install other project dependencies first
 RUN pip3 install --no-cache-dir \
     numpy \
     pillow \
@@ -37,8 +29,16 @@ RUN pip3 install --no-cache-dir \
     "networkx<3.2" \
     runpod
 
-# Install the project
+# Install the project (this will install dependencies from pyproject.toml)
 RUN pip3 install .
+
+# OVERRIDE with our working versions (this fixes the compatibility issue)
+RUN pip3 install --no-cache-dir --force-reinstall \
+    huggingface-hub==0.14.1 \
+    transformers==4.21.3 \
+    diffusers==0.16.1 \
+    accelerate==0.19.0 \
+    peft==0.3.0
 
 # Download models
 RUN git lfs install && \
