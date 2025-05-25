@@ -29,7 +29,7 @@ def handler(job):
     try:
         # Get the IP and port from RunPod environment
         ip = os.environ.get("RUNPOD_HTTP_IP")
-    port = os.environ.get("RUNPOD_TCP_PORT_8765", 8765)
+        port = os.environ.get("RUNPOD_TCP_PORT_8765", 8765)
         
         if not ip:
             return {
