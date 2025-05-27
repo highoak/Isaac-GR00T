@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     python3-setuptools \
     wget \
     git-lfs \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy all project files from parent directory
