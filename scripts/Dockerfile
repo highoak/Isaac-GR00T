@@ -15,20 +15,20 @@ COPY .. /app/
 COPY ../rp_handler.py /app/rp_handler.py
 COPY ../getting_started /app/getting_started/
 
-# Install PyTorch first
+# Install PyTorch first (compatible with CUDA 11.8)
 RUN pip3 install --no-cache-dir \
     torch==2.2.2+cu118 \
     torchvision==0.17.2+cu118 \
     torchaudio==2.2.2+cu118 \
     --extra-index-url https://download.pytorch.org/whl/cu118
 
-# Install Hugging Face packages with latest compatible versions
+# Install VERIFIED WORKING Hugging Face packages (tested in local env)
 RUN pip3 install --no-cache-dir \
-    huggingface-hub==0.26.2 \
+    huggingface-hub==0.32.2 \
     diffusers==0.30.2 \
-    transformers==4.45.2 \
-    accelerate==1.2.1 \
-    peft==0.14.0
+    transformers==4.52.3 \
+    accelerate==1.7.0 \
+    peft==0.15.2
 
 # Install other dependencies
 RUN pip3 install --no-cache-dir \
